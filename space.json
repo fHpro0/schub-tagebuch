@@ -1,10 +1,10 @@
 {
   "$schema": "https://chameloon.com/space.schema.json",
   "name": "Schub-Tagebuch",
-  "version": 2,
+  "version": 3,
   "mode": "custom",
   "minApp": "1.2",
-  "changes": "Neu: ausführliche Beschreibung pro Schub, eigene Symptome, Fragen für den nächsten Arzttermin und ein ruhiges, weiches Design.",
+  "changes": "Neues, aufgeräumtes Design im Stil von iOS: Tabs für Heute, Verlauf und Arzt, dazu klarere Listen und Diagramme.",
   "description": "Dein Tagebuch für Schübe bei MS: Symptome, Verlauf, Tagesform und eine Übersicht für den Arzttermin. Bleibt auf diesem iPhone.",
   "icon": "/img/icon.png",
   "tint": "#DB2777",

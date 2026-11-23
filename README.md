@@ -23,12 +23,12 @@ Das Tagebuch ersetzt keine ärztliche Beratung. Bei neuen oder deutlich stärker
 
 ## Entwickeln
 
-`space.json` beschreibt den Space (Datenbank, Widget, Aktionen), `app/` ist die Web-App, `pages/widget.oui` das Widget.
-Prüfen und packen mit dem Chameloon-SDK:
+`space.json` beschreibt den Space (Datenbank, Widget, Aktionen), `pages/widget.oui` das Widget. Die App selbst ist eine
+Svelte-App in `web/`, gebaut mit Vite nach `app/` (das ist der Teil, den Chameloon lädt):
 
 ```sh
-chameloon-check .
-chameloon-app pack . --out-dir out
+cd web && bun install && bun run build   # schreibt nach ../app
+cd .. && chameloon-check . && chameloon-app pack . --out-dir out
 ```
 
 Lizenz: MIT

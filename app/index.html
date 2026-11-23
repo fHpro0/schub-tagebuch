@@ -4,58 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>Schub-Tagebuch</title>
-  <link rel="stylesheet" href="style.css">
+  <script defer src="./assets/index-CmBZ2Zbo.js"></script>
+  <link rel="stylesheet" href="./assets/style-BVImopUa.css">
 </head>
 <body>
-  <div id="app">
-    <header id="top">
-      <button type="button" id="back" class="back" hidden>‹ Zurück</button>
-      <h1 id="title">Schub-Tagebuch</h1>
-    </header>
-    <p id="toast" role="status" aria-live="polite"></p>
-    <main id="view"></main>
-  </div>
-
-  <dialog id="sheet" aria-labelledby="sheet-title">
-    <form id="neu" novalidate>
-      <div class="bar">
-        <h2 id="sheet-title">Schub eintragen</h2>
-        <button type="button" id="sheet-close" class="quiet">Abbrechen</button>
-      </div>
-      <p class="info">Neue oder deutlich stärkere Beschwerden, die länger als 24 Stunden bleiben? Sag deiner Neurologin Bescheid.</p>
-      <label for="n-start">Beginn</label>
-      <input type="date" id="n-start">
-      <label for="n-staerke">Stärke heute <output id="n-staerke-v" for="n-staerke">5/10</output></label>
-      <input type="range" id="n-staerke" min="1" max="10" step="1" value="5">
-      <p class="label" id="n-aus-l">Auslöser</p>
-      <div class="chips" id="n-aus" role="group" aria-labelledby="n-aus-l"></div>
-      <p class="label" id="n-sym-l">Symptome</p>
-      <div id="n-sym" role="group" aria-labelledby="n-sym-l"></div>
-      <label for="n-notiz">Beschreibung</label>
-      <textarea id="n-notiz" class="grow" rows="5" placeholder="Was genau? Wo im Körper? Wie fühlt es sich an? Wie hat es angefangen?"></textarea>
-      <button type="submit" class="main">Schub speichern</button>
-    </form>
-  </dialog>
-
-  <dialog id="confirm" aria-labelledby="confirm-title">
-    <form method="dialog">
-      <h2 id="confirm-title">Schub löschen?</h2>
-      <p>Der Schub mit allen Einträgen wird von diesem iPhone gelöscht. Das lässt sich nicht rückgängig machen.</p>
-      <div class="row">
-        <button type="button" id="confirm-no">Abbrechen</button>
-        <button type="button" id="confirm-yes" class="danger">Löschen</button>
-      </div>
-    </form>
-  </dialog>
-
-  <div id="lock" class="lock" role="dialog" aria-modal="true" aria-labelledby="lock-title" hidden>
-    <img src="hero.svg" alt="" class="lock-art">
-    <h2 id="lock-title">Schub-Tagebuch</h2>
-    <p id="lock-text">Gesperrt. Mit Face ID öffnest du dein Tagebuch.</p>
-    <button type="button" id="unlock" class="main">Entsperren</button>
-  </div>
-  <div id="fx" aria-hidden="true"></div>
-  <script src="app.js"></script>
+  <div id="root"></div>
 </body>
 </html>
