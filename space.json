@@ -1,0 +1,100 @@
+{
+  "$schema": "https://chameloon.com/space.schema.json",
+  "name": "Schub-Tagebuch",
+  "version": 2,
+  "mode": "custom",
+  "minApp": "1.2",
+  "changes": "Neu: ausführliche Beschreibung pro Schub, eigene Symptome, Fragen für den nächsten Arzttermin und ein ruhiges, weiches Design.",
+  "description": "Dein Tagebuch für Schübe bei MS: Symptome, Verlauf, Tagesform und eine Übersicht für den Arzttermin. Bleibt auf diesem iPhone.",
+  "icon": "/img/icon.png",
+  "tint": "#DB2777",
+  "permissions": [
+    "data",
+    "haptics",
+    "widget",
+    "share",
+    "faceid"
+  ],
+  "optional": [
+    "faceid",
+    "share"
+  ],
+  "why": {
+    "data": "Speichert deine Schübe und deine Tagesform auf diesem iPhone",
+    "haptics": "Eine sanfte Rückmeldung, wenn etwas gespeichert ist",
+    "widget": "Hält das Widget mit deinem Schub-Stand aktuell",
+    "share": "Zum Teilen der Übersicht für den Arzttermin",
+    "faceid": "Wenn du willst, schützt Face ID dein Tagebuch"
+  },
+  "app": {
+    "kind": "bundle",
+    "entry": "index.html",
+    "network": []
+  },
+  "schema": [
+    "CREATE TABLE schuebe (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))), start TEXT NOT NULL, ende TEXT, staerke INTEGER NOT NULL DEFAULT 5, ausloeser TEXT, kortison INTEGER NOT NULL DEFAULT 0, mrt INTEGER NOT NULL DEFAULT 0, arzt INTEGER NOT NULL DEFAULT 0, notiz TEXT)",
+    "CREATE TABLE symptom_liste (name TEXT PRIMARY KEY, emoji TEXT NOT NULL, ord INTEGER NOT NULL)",
+    "INSERT INTO symptom_liste (name, emoji, ord) VALUES ('Sehstörung, verschwommen', '👁️', 1), ('Doppelbilder', '👀', 2), ('Taubheit, Kribbeln', '🖐️', 3), ('Schwäche in Arm oder Bein', '🦵', 4), ('Gleichgewicht, Schwindel', '🌀', 5), ('Unsicher beim Gehen', '🚶‍♀️', 6), ('Erschöpfung (Fatigue)', '🔋', 7), ('Schmerzen', '⚡', 8), ('Stromgefühl im Nacken', '💫', 9), ('Blase oder Darm', '💧', 10), ('Konzentration, Gedächtnis', '🧠', 11), ('Sprechen, Schlucken', '🗣️', 12), ('Spastik, Krämpfe', '💪', 13), ('Stimmung', '🌧️', 14)",
+    "CREATE TABLE symptome (schub TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (schub, name))",
+    "CREATE TABLE verlauf (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))), schub TEXT NOT NULL, tag TEXT NOT NULL, staerke INTEGER NOT NULL, notiz TEXT, UNIQUE (schub, tag))",
+    "CREATE TABLE tagesform (tag TEXT PRIMARY KEY, energie INTEGER NOT NULL, gefuehl TEXT)",
+    "ALTER TABLE schuebe ADD COLUMN beschreibung TEXT",
+    "ALTER TABLE symptom_liste ADD COLUMN eigen INTEGER NOT NULL DEFAULT 0",
+    "CREATE TABLE fragen (id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))), text TEXT NOT NULL, erledigt INTEGER NOT NULL DEFAULT 0, erstellt TEXT NOT NULL DEFAULT (date('now', 'localtime')))"
+  ],
+  "card": {
+    "query": "SELECT CASE WHEN aktiv > 0 THEN 'Schub läuft seit **' || seit || '** ' || CASE WHEN seit = 1 THEN 'Tag' ELSE 'Tagen' END || ', pass auf dich auf 💗' WHEN n = 0 THEN 'Noch kein Schub eingetragen 💗' WHEN frei <= 0 THEN 'Schub gerade vorbei, gut gemacht 💗' ELSE '**' || frei || '** ' || CASE WHEN frei = 1 THEN 'Tag' ELSE 'Tage' END || ' schubfrei 💗' END AS headline, jahr, coalesce(energie, '–') AS energie, CASE WHEN jahr = 1 THEN '1 Schub' ELSE jahr || ' Schübe' END AS jahrtext FROM (SELECT (SELECT count(*) FROM schuebe WHERE ende IS NULL) AS aktiv, coalesce((SELECT CAST(julianday(date('now', 'localtime')) - julianday(max(start)) AS INTEGER) + 1 FROM schuebe WHERE ende IS NULL), 0) AS seit, (SELECT count(*) FROM schuebe) AS n, coalesce((SELECT CAST(julianday(date('now', 'localtime')) - julianday(max(ende)) AS INTEGER) FROM schuebe), 0) AS frei, (SELECT count(*) FROM schuebe WHERE start >= date('now', 'localtime', '-12 months')) AS jahr, (SELECT energie || '/10' FROM tagesform WHERE tag = date('now', 'localtime')) AS energie)",
+    "motd": "{{headline}}",
+    "stats": [
+      {
+        "label": "Letzte 12 Monate",
+        "value": "{{jahrtext}}"
+      },
+      {
+        "label": "Energie heute",
+        "value": "{{energie}}"
+      }
+    ],
+    "chart": "WITH RECURSIVE d(n) AS (SELECT 13 UNION ALL SELECT n - 1 FROM d WHERE n > 0) SELECT coalesce((SELECT energie FROM tagesform WHERE tag = date('now', 'localtime', '-' || d.n || ' days')), 0) FROM d"
+  },
+  "menu": {
+    "title": "{{title}}",
+    "subtitle": "{{sub}}",
+    "query": "SELECT CASE WHEN aktiv > 0 THEN 'Tag ' || tage || ' im Schub' WHEN n = 0 THEN 'Noch kein Schub eingetragen' WHEN frei <= 0 THEN 'Schub gerade vorbei' ELSE frei || CASE WHEN frei = 1 THEN ' Tag' ELSE ' Tage' END || ' schubfrei' END AS title, CASE WHEN aktiv > 0 THEN CASE WHEN heute > 0 THEN 'Heute: Stärke ' || heute || '/10' ELSE 'Heute noch nicht eingetragen' END WHEN e > 0 THEN 'Energie heute: ' || e || '/10' ELSE 'Tagesform heute noch offen' END AS sub FROM (SELECT (SELECT count(*) FROM schuebe WHERE ende IS NULL) AS aktiv, coalesce((SELECT CAST(julianday(:today) - julianday(max(start)) AS INTEGER) + 1 FROM schuebe WHERE ende IS NULL), 0) AS tage, coalesce((SELECT v.staerke FROM verlauf v WHERE v.schub = (SELECT id FROM schuebe WHERE ende IS NULL ORDER BY start DESC LIMIT 1) AND v.tag = :today), 0) AS heute, (SELECT count(*) FROM schuebe) AS n, coalesce((SELECT CAST(julianday(:today) - julianday(max(ende)) AS INTEGER) FROM schuebe), 0) AS frei, coalesce((SELECT energie FROM tagesform WHERE tag = :today), 0) AS e)"
+  },
+  "actions": [
+    {
+      "id": "noch-da",
+      "title": "Schub ist noch da",
+      "symbol": "heart.text.square",
+      "when": "SELECT count(*) > 0 FROM schuebe WHERE ende IS NULL",
+      "unavailable": "Gerade läuft kein Schub.",
+      "sql": "INSERT INTO verlauf (schub, tag, staerke) SELECT s.id, :today, coalesce((SELECT v.staerke FROM verlauf v WHERE v.schub = s.id ORDER BY v.tag DESC LIMIT 1), s.staerke) FROM schuebe s WHERE s.ende IS NULL ORDER BY s.start DESC LIMIT 1 ON CONFLICT(schub, tag) DO NOTHING",
+      "query": "SELECT CAST(julianday(:today) - julianday(s.start) AS INTEGER) + 1 AS tag, coalesce((SELECT v.staerke FROM verlauf v WHERE v.schub = s.id AND v.tag = :today), s.staerke) AS st FROM schuebe s WHERE s.ende IS NULL ORDER BY s.start DESC LIMIT 1",
+      "say": "Eingetragen: Tag {{tag}}, Stärke {{st}}/10. Pass auf dich auf 💗"
+    },
+    {
+      "id": "vorbei",
+      "title": "Schub ist vorbei",
+      "symbol": "checkmark.heart",
+      "when": "SELECT count(*) > 0 FROM schuebe WHERE ende IS NULL",
+      "unavailable": "Gerade läuft kein Schub.",
+      "sql": "UPDATE schuebe SET ende = :today WHERE ende IS NULL AND start <= :today",
+      "say": "Schub beendet. Gut gemacht 💗"
+    },
+    {
+      "id": "neuer-schub",
+      "title": "Neuen Schub eintragen",
+      "symbol": "plus.circle",
+      "when": "SELECT count(*) = 0 FROM schuebe WHERE ende IS NULL",
+      "unavailable": "Es läuft schon ein Schub.",
+      "open": true
+    },
+    {
+      "id": "tagesform",
+      "title": "Tagesform eintragen",
+      "symbol": "face.smiling",
+      "open": true
+    }
+  ]
+}
