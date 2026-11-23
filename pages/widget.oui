@@ -1,37 +1,52 @@
-// Schub-Tagebuch widget: clean iOS look like the app (white, one pink accent). A widget only reads; its buttons open the app (navigate), which then
-// shows the matching panel. One-tap writes without opening the app are the space's actions.
-sky = "#FFFFFF"
+// Schub-Tagebuch widget: white, one pink (#E11D48 fills, #D70F3C small text). A widget only reads, and a tap can only open the app
+// (navigate): the app then shows the matching sheet. The whole widget opens Heute; each button opens the sheet for its job:
+// noch-da (writes today's entry, then a sheet to adjust or undo it), staerke, vorbei, tagesform, neu.
+ink = "#1C1C1E"
+dimc = "#6A6A6F"
 pink = "#E11D48"
-w = Query("query", {sql: "SELECT (SELECT count(*) FROM schuebe WHERE ende IS NULL) AS aktiv, coalesce((SELECT CAST(julianday(date('now', 'localtime')) - julianday(max(start)) AS INTEGER) + 1 FROM schuebe WHERE ende IS NULL), 0) AS tage, coalesce((SELECT v.staerke FROM verlauf v WHERE v.schub = (SELECT id FROM schuebe WHERE ende IS NULL ORDER BY start DESC LIMIT 1) ORDER BY v.tag DESC LIMIT 1), (SELECT staerke FROM schuebe WHERE ende IS NULL ORDER BY start DESC LIMIT 1), 0) AS staerke, (SELECT count(*) FROM verlauf WHERE tag = date('now', 'localtime') AND schub IN (SELECT id FROM schuebe WHERE ende IS NULL)) AS heute, (SELECT count(*) FROM schuebe) AS n, coalesce((SELECT CAST(julianday(date('now', 'localtime')) - julianday(max(ende)) AS INTEGER) FROM schuebe), 0) AS frei, coalesce((SELECT energie FROM tagesform WHERE tag = date('now', 'localtime')), 0) AS energie"}, {rows: [{aktiv: 0, tage: 0, staerke: 0, heute: 0, n: 0, frei: 0, energie: 0}]})
-week = Query("query", {sql: "WITH RECURSIVE d(n) AS (SELECT 6 UNION ALL SELECT n - 1 FROM d WHERE n > 0) SELECT substr('SMDMDFS', CAST(strftime('%w', date('now', 'localtime', '-' || n || ' days')) AS INTEGER) + 1, 1) AS label, coalesce((SELECT max(staerke) FROM verlauf WHERE tag = date('now', 'localtime', '-' || n || ' days')), 0) AS value FROM d"}, {rows: []})
-run = w.rows[0].aktiv > 0
-tagLabel = w.rows[0].heute > 0 ? "heute" : "zuletzt"
-freeText = w.rows[0].n == 0 ? "noch nichts eingetragen" : (w.rows[0].frei <= 0 ? "Schub vorbei 💗" : "schubfrei 💗")
-freeNum = w.rows[0].n == 0 ? "💗" : (w.rows[0].frei <= 0 ? "Geschafft" : w.rows[0].frei + (w.rows[0].frei == 1 ? " Tag" : " Tage"))
-energyText = w.rows[0].energie > 0 ? "Energie heute " + w.rows[0].energie + "/10" : "Tagesform noch offen"
+tint = "#FFE4EA"
+w = Query("query", {sql: "WITH t(d) AS (SELECT date('now', 'localtime')), r(id) AS (SELECT id FROM schuebe WHERE ende IS NULL ORDER BY start DESC LIMIT 1) SELECT (SELECT count(*) FROM r) AS aktiv, coalesce((SELECT CAST(julianday((SELECT d FROM t)) - julianday(start) AS INTEGER) + 1 FROM schuebe WHERE id = (SELECT id FROM r)), 0) AS tage, coalesce((SELECT staerke FROM verlauf WHERE schub = (SELECT id FROM r) ORDER BY tag DESC LIMIT 1), (SELECT staerke FROM schuebe WHERE id = (SELECT id FROM r)), 0) AS staerke, (SELECT count(*) FROM verlauf WHERE schub = (SELECT id FROM r) AND tag = (SELECT d FROM t)) AS heute, coalesce((SELECT staerke FROM verlauf WHERE schub = (SELECT id FROM r) AND tag = (SELECT d FROM t)), 0) AS hst, coalesce((SELECT staerke FROM verlauf WHERE schub = (SELECT id FROM r) AND tag < (SELECT d FROM t) ORDER BY tag DESC LIMIT 1), -1) AS prev, coalesce((SELECT CASE WHEN julianday((SELECT d FROM t)) - julianday(tag) = 1 THEN 'seit gestern' ELSE 'seit ' || strftime('%d.%m.', tag) END FROM verlauf WHERE schub = (SELECT id FROM r) AND tag < (SELECT d FROM t) ORDER BY tag DESC LIMIT 1), '') AS seit, (SELECT count(*) FROM schuebe) AS n, coalesce((SELECT CAST(julianday((SELECT d FROM t)) - julianday(max(ende)) AS INTEGER) FROM schuebe), 0) AS frei, (SELECT count(*) FROM tagesform WHERE tag = (SELECT d FROM t)) AS mood, coalesce((SELECT energie FROM tagesform WHERE tag = (SELECT d FROM t)), 0) AS energie, (SELECT count(*) FROM verlauf WHERE tag >= date('now', 'localtime', '-6 days')) AS wks, (SELECT count(*) FROM tagesform WHERE tag >= date('now', 'localtime', '-6 days')) AS wke, coalesce((SELECT CASE gefuehl WHEN 'gut' THEN '😊 Gut' WHEN 'okay' THEN '🙂 Okay' WHEN 'mau' THEN '😕 Mau' WHEN 'schlecht' THEN '😣 Schlecht' ELSE '' END FROM tagesform WHERE tag = (SELECT d FROM t)), '') AS gefuehl"}, {rows: [{aktiv: 0, tage: 0, staerke: 0, heute: 0, hst: 0, prev: -1, seit: "", n: 0, frei: 0, mood: 0, energie: 0, wks: 0, wke: 0, gefuehl: ""}]})
+strength = Query("query", {sql: "WITH RECURSIVE d(n) AS (SELECT 6 UNION ALL SELECT n - 1 FROM d WHERE n > 0) SELECT substr('SMDMDFS', CAST(strftime('%w', date('now', 'localtime', '-' || n || ' days')) AS INTEGER) + 1, 1) AS label, coalesce((SELECT max(staerke) FROM verlauf WHERE tag = date('now', 'localtime', '-' || n || ' days')), 0) AS value FROM d"}, {rows: []})
+energy = Query("query", {sql: "WITH RECURSIVE d(n) AS (SELECT 6 UNION ALL SELECT n - 1 FROM d WHERE n > 0) SELECT substr('SMDMDFS', CAST(strftime('%w', date('now', 'localtime', '-' || n || ' days')) AS INTEGER) + 1, 1) AS label, coalesce((SELECT energie FROM tagesform WHERE tag = date('now', 'localtime', '-' || n || ' days')), 0) AS value FROM d"}, {rows: []})
 
-head = Row([Icon("heart.fill", {color: "#E11D48", size: 15}), Text("Schub-Tagebuch", "caption", {color: "#D70F3C", weight: "semibold", lineLimit: 1}), Spacer()], 6)
-dim = {color: "#6A6A6F"}
-btnMain = Text("Ja, noch da", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 14, padding: 9, navigate: "noch-da", align: "center"})
-btnEnd = Text("Vorbei 💗", "footnote", {color: "#D70F3C", background: "#FFE4EA", weight: "bold", radius: 14, padding: 9, navigate: "vorbei", align: "center"})
-btnMainS = Text("Ja, noch da", "caption", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 6, navigate: "noch-da", align: "center"})
-btnEndS = Text("Vorbei 💗", "caption", {color: "#D70F3C", background: "#FFE4EA", weight: "bold", radius: 12, padding: 6, navigate: "vorbei", align: "center"})
-btnAsk = Text("Noch da?", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 14, padding: 8, navigate: "noch-da", align: "center"})
-btnForm = Text("Tagesform", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 14, padding: 9, navigate: "tagesform", align: "center"})
-btnNew = Text("Neuer Schub", "footnote", {color: "#D70F3C", background: "#FFE4EA", weight: "bold", radius: 14, padding: 9, navigate: "neu", align: "center"})
-ask = w.rows[0].heute > 0 ? Text("Heute eingetragen ✓", "subheadline", {color: "#1C1C1E", weight: "semibold"}) : Text("Ist der Schub noch da?", "headline", {color: "#1C1C1E"})
-runInfo = Text("Tag " + w.rows[0].tage + " im Schub · Stärke " + w.rows[0].staerke + "/10 " + tagLabel, "subheadline", {color: "#1C1C1E", weight: "semibold", lineLimit: 2, minScale: 0.8})
+x = w.rows[0]
+run = x.aktiv > 0
+logged = x.heute > 0
+moodDone = x.mood > 0
+delta = x.hst - x.prev
+trend = x.prev < 0 ? "" : (delta > 0 ? "↑ " + delta + " " + x.seit : (delta < 0 ? "↓ " + (0 - delta) + " " + x.seit : "unverändert"))
+todayLine = "Heute: Stärke " + x.hst + "/10 ✓" + (trend == "" ? "" : " · " + trend)
+moodLine = "Heute: " + x.gefuehl + " · Energie " + x.energie + "/10 ✓"
+freeBig = x.n == 0 ? "Noch kein Schub" : (x.frei <= 0 ? "Schub vorbei" : x.frei + (x.frei == 1 ? " Tag ohne Schub" : " Tage ohne Schub"))
+freeNum = x.n == 0 ? "–" : (x.frei <= 0 ? "0" : "" + x.frei)
 
-smallRun = Column([head, Spacer(), Text("Tag " + w.rows[0].tage, "title", {color: "#1C1C1E", weight: "heavy", minScale: 0.6}), Text("im Schub", "caption", dim), btnAsk], 4, "leading")
-smallFree = Column([head, Spacer(), Text(freeNum, "title", {color: "#1C1C1E", weight: "heavy", minScale: 0.6}), Text(freeText, "caption", dim)], 4, "leading")
-mediumRun = Column([head, runInfo, ask, Row(w.rows[0].heute > 0 ? [btnMainS, btnEndS] : [btnMain, btnEnd], 8)], 6, "leading")
-mediumFree = Column([head, Spacer(), Text(freeNum + " " + freeText, "title3", {color: "#1C1C1E", weight: "heavy", minScale: 0.7, lineLimit: 2}), Text(energyText, "caption", dim), Row([btnForm, btnNew], 8)], 6, "leading")
-largeRun = Column([head, runInfo, ask, Row(w.rows[0].heute > 0 ? [btnMainS, btnEndS] : [btnMain, btnEnd], 8), Spacer(), Divider(), Text("Stärke, letzte 7 Tage", "caption", dim), Chart(week.rows, "area", {color: pink, height: 150})], 8, "leading")
-largeFree = Column([head, Text(freeNum + " " + freeText, "title2", {color: "#1C1C1E", weight: "heavy", minScale: 0.7}), Text(energyText, "subheadline", dim), Spacer(), Row([btnForm, btnNew], 8)], 8, "leading")
+head = Row([Icon("heart.fill", {color: pink, size: 14}), Text("Schub-Tagebuch", "caption", {color: "#D70F3C", weight: "semibold", lineLimit: 1}), Spacer()], 6)
+dim = {color: dimc}
+btnYes = Text("Ja, noch da", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 10, navigate: "noch-da", align: "center", lineLimit: 1, width: 130})
+btnChange = Text("Ändern", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 10, navigate: "staerke", align: "center", lineLimit: 1, width: 130})
+btnEnd = Text("Vorbei", "footnote", {color: "#D70F3C", background: tint, weight: "bold", radius: 12, padding: 10, navigate: "vorbei", align: "center", lineLimit: 1, width: 130})
+btnMood = Text("Wie geht’s dir?", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 10, navigate: "tagesform", align: "center", lineLimit: 1, width: 150})
+btnNew = Text("Neuer Schub", "footnote", {color: "#D70F3C", background: tint, weight: "bold", radius: 12, padding: 10, navigate: "neu", align: "center", lineLimit: 1, width: 120})
+btnAskS = Text("Noch da?", "footnote", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 8, navigate: "noch-da", align: "center", lineLimit: 1})
+btnMoodS = Text("Wie geht’s dir?", "caption", {color: "#FFFFFF", background: pink, weight: "bold", radius: 12, padding: 8, navigate: "tagesform", align: "center", lineLimit: 1, minScale: 0.8})
 
-small = Widget([run ? smallRun : smallFree], sky, "light")
-medium = Widget([run ? mediumRun : mediumFree], sky, "light")
-large = Widget([run ? largeRun : largeFree], sky, "light")
-circular = Widget([Text(run ? "" + w.rows[0].tage : (w.rows[0].n == 0 ? "💗" : "" + w.rows[0].frei), "headline")])
-rectangular = Widget([Text(run ? "Tag " + w.rows[0].tage + " im Schub" : "Schubfrei", "headline"), Text(run ? "Stärke " + w.rows[0].staerke + "/10 " + tagLabel : freeNum + " " + freeText, "caption")])
-inline = Widget([Text(run ? "💗 Tag " + w.rows[0].tage + " im Schub" : "💗 " + freeNum + " schubfrei")])
+runTitle = Text("Tag " + x.tage + " im Schub", "title3", {color: ink, weight: "heavy", minScale: 0.7, lineLimit: 1})
+freeTitle = Text(freeBig, "title3", {color: ink, weight: "heavy", minScale: 0.7, lineLimit: 1})
+runLine = logged ? Text(todayLine, "subheadline", {color: ink, minScale: 0.8, lineLimit: 1}) : Text("Ist der Schub noch da?", "subheadline", {color: ink, lineLimit: 1})
+freeLine = moodDone ? Text(moodLine, "subheadline", {color: ink, minScale: 0.8, lineLimit: 1}) : null
+runButtons = Row(logged ? [btnChange, btnEnd] : [btnYes, btnEnd], 8)
+freeButtons = Row(moodDone ? [btnNew] : [btnMood, btnNew], 8)
+
+smallRun = Column([head, Spacer(), logged ? Text(x.hst + "/10 ✓", "title", {color: ink, weight: "heavy", minScale: 0.6, lineLimit: 1}) : Text("Tag " + x.tage, "title", {color: ink, weight: "heavy", minScale: 0.6, lineLimit: 1}), Text(logged ? "Tag " + x.tage + " im Schub" : "im Schub", "caption", dim), logged ? (trend == "" ? null : Text(trend, "caption", {color: ink, lineLimit: 1, minScale: 0.8})) : btnAskS], 4, "leading")
+smallFree = Column([head, Spacer(), x.n == 0 ? Text("Noch kein Schub", "title2", {color: ink, weight: "heavy", minScale: 0.6, lineLimit: 2}) : Text(x.frei <= 0 ? "Vorbei" : x.frei + (x.frei == 1 ? " Tag" : " Tage"), "title", {color: ink, weight: "heavy", minScale: 0.6, lineLimit: 1}), x.n == 0 ? null : Text("ohne Schub", "caption", dim), moodDone ? Text("Heute: " + x.gefuehl + " ✓", "caption", {color: ink, minScale: 0.8, lineLimit: 1}) : btnMoodS], 4, "leading")
+mediumRun = Column([head, Spacer(), runTitle, runLine, Spacer(), runButtons], 4, "leading")
+mediumFree = Column([head, Spacer(), freeTitle, freeLine, Spacer(), freeButtons], 4, "leading")
+largeRun = Column([head, runTitle, runLine, runButtons, Divider(), Text("Stärke, letzte 7 Tage", "caption", dim), x.wks > 0 ? Chart(strength.rows, "area", {color: pink, height: 120}) : Text("Noch keine Einträge in den letzten 7 Tagen.", "caption", dim)], 8, "leading")
+largeFree = Column([head, freeTitle, freeLine, freeButtons, Divider(), Text("Energie, letzte 7 Tage", "caption", dim), x.wke > 0 ? Chart(energy.rows, "bar", {color: pink, height: 120}) : Text("Noch keine Einträge in den letzten 7 Tagen.", "caption", dim)], 8, "leading")
+
+small = Widget([run ? smallRun : smallFree], "#FFFFFF", "light", "heute")
+medium = Widget([run ? mediumRun : mediumFree], "#FFFFFF", "light", "heute")
+large = Widget([run ? largeRun : largeFree], "#FFFFFF", "light", "heute")
+circular = Widget([Text(run ? "" + x.tage : freeNum, "title2", {weight: "heavy", minScale: 0.6}), Text(run ? "Tag" : "frei", "caption2")], null, null, "heute")
+rectangular = Widget([Text(run ? "Tag " + x.tage + " · Stärke " + x.staerke + "/10" : freeBig, "subheadline", {weight: "bold", lineLimit: 1, minScale: 0.7}), Text(run ? (logged ? (trend == "" ? "Heute eingetragen ✓" : "Heute ✓ · " + trend) : "Heute noch offen") : (moodDone ? x.gefuehl + " · Energie " + x.energie + "/10 ✓" : "Tagesform noch offen"), "caption", {lineLimit: 1, minScale: 0.8})], null, null, "heute")
+inline = Widget([Text(run ? "Tag " + x.tage + " · Stärke " + x.staerke + "/10" : (x.n == 0 ? "Noch kein Schub" : (x.frei <= 0 ? "Schub vorbei" : x.frei + " Tage schubfrei")))], null, null, "heute")

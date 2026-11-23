@@ -12,7 +12,8 @@
   import { addDays, dayCount, daysSince, de, deShort, diff, rel, today } from "../lib/dates";
   import { flareLen, loadFlares } from "../lib/data";
   import { loader } from "../lib/load.svelte";
-  import { app, confetti, motion, pop, quiet, refresh, reveal, toast } from "../lib/store.svelte";
+  import { endFlare as finish } from "../lib/flow";
+  import { confetti, motion, pop, quiet, refresh, toast } from "../lib/store.svelte";
 
   let { id }: { id: string } = $props();
   const PROMPT = "Was genau? Wo im Körper? Wie fühlt es sich an? Wie hat es angefangen?";
@@ -37,13 +38,6 @@
     if (!seeded) { st = data.vl.find((v) => v.tag === today())?.staerke ?? data.vl[0]?.staerke ?? data.f.staerke; seeded = true; }
   });
   const hasToday = $derived(!!data?.vl.some((v) => v.tag === today()));
-
-  $effect(() => {
-    if (!data?.f || (app.focus !== "today" && app.focus !== "end")) return;
-    const target = app.focus === "today" ? "today-group" : "end-group";
-    app.focus = null;
-    if (run) void reveal(target);
-  });
 
   async function saveToday() {
     try {
@@ -74,7 +68,7 @@
   async function endFlare() {
     const e = endDate || today();
     if (!f || e < f.start) { toast("Das Ende kann nicht vor dem Beginn liegen."); return; }
-    try { await exec("UPDATE schuebe SET ende = ? WHERE id = ?", [e, id]); buzz("success"); reloadWidget(); confetti(); toast("Schön, dass es vorbei ist 💗"); refresh(); } catch (er) { quiet(er); }
+    try { await finish(id, e); confetti(); toast("Schön, dass es vorbei ist 💗"); refresh(); } catch (er) { quiet(er); }
   }
   async function reopen() {
     try { await exec("UPDATE schuebe SET ende = NULL WHERE id = ?", [id]); reloadWidget(); buzz("selection"); refresh(); } catch (e) { quiet(e); }
@@ -117,7 +111,7 @@
       </section>
 
       {#if run}
-        <section class="group" id="today-group">
+        <section class="group">
           <h2 class="gh">Heute eintragen</h2>
           <div class="gl">
             <SliderRow id="d-st" label="Stärke" bind:value={st} />
@@ -179,7 +173,7 @@
         </div>
       </section>
 
-      <section class="group" id="end-group">
+      <section class="group">
         <h2 class="gh">{run ? "Ist der Schub vorbei?" : "Schub beendet"}</h2>
         <div class="gl">
           {#if run}

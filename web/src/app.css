@@ -88,6 +88,8 @@ button.row:active, a.row:active { background: var(--hl); }
 .btn:active { opacity: .65; }
 .btn:disabled { opacity: .4; }
 .btns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .75rem; }
+.btns.wide { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.btns .btn { padding: 0 .5rem; white-space: nowrap; }
 
 /* ---- fields */
 .field { width: 100%; min-width: 0; padding: .1rem 0; border: 0; background: transparent; color: var(--label); outline: none; }
@@ -155,6 +157,10 @@ textarea.field { display: block; resize: none; line-height: 1.35; padding-block:
 .tabbar button:focus-visible { outline-offset: -3px; }
 
 /* ---- sheets */
+.sheet.compact { top: auto; max-height: calc(100% - env(safe-area-inset-top) - 1.25rem); }
+.sheet.compact .body { flex: 0 1 auto; padding-top: 1rem; }
+.center { text-align: center; }
+.toast .tbtn { margin-left: .75rem; padding: .25rem 0; border: 0; background: none; color: #FF8FA6; font-weight: 600; pointer-events: auto; }
 .scrim { position: absolute; inset: 0; z-index: 10; background: var(--scrim); }
 .sheet { position: absolute; left: 0; right: 0; bottom: 0; top: calc(env(safe-area-inset-top) + 1.25rem); z-index: 11; display: flex; flex-direction: column; background: var(--bg); border-radius: 12px 12px 0 0; overflow: hidden; box-shadow: 0 -2px 20px rgba(0, 0, 0, .15); max-width: 44rem; margin: 0 auto; outline: none; }
 .sheet .grabber { flex: none; align-self: center; width: 2.25rem; height: .3rem; margin: .4rem 0 0; border-radius: 999px; background: var(--label3); opacity: .8; }
@@ -169,6 +175,7 @@ textarea.field { display: block; resize: none; line-height: 1.35; padding-block:
 .scrim.top { z-index: 20; }
 
 .toast { position: absolute; left: 50%; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + .75rem); z-index: 30; transform: translateX(-50%); width: max-content; max-width: calc(100% - 2rem); padding: .6rem 1rem; border-radius: 14px; background: var(--toast); color: #fff; font-size: .882rem; text-align: center; box-shadow: 0 4px 16px rgba(0, 0, 0, .25); pointer-events: none; }
+.toast.top { bottom: auto; top: calc(env(safe-area-inset-top) + .75rem); }
 .toast.high { bottom: calc(env(safe-area-inset-bottom) + 1rem); }
 
 /* ---- lock */

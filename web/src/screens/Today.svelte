@@ -1,46 +1,31 @@
 <script lang="ts">
   import Icon from "../ui/Icon.svelte";
-  import Segmented from "../ui/Segmented.svelte";
-  import SliderRow from "../ui/SliderRow.svelte";
+  import MoodEditor from "../ui/MoodEditor.svelte";
   import BarChart from "../ui/BarChart.svelte";
   import FlareRow from "../ui/FlareRow.svelte";
-  import { buzz, exec, q, reloadWidget } from "../lib/phone";
-  import { daysSince, de, deShort, diff, longToday, today } from "../lib/dates";
+  import { q } from "../lib/phone";
+  import { de, deShort, diff, longToday, today } from "../lib/dates";
   import { energySeries, flareLen, loadFlares } from "../lib/data";
+  import { trendText } from "../lib/flow";
   import { loader } from "../lib/load.svelte";
-  import { app, openNew, push, quiet, reveal, toast } from "../lib/store.svelte";
+  import { app, push, startDay, startEnd, startMood, startNew } from "../lib/store.svelte";
 
-  type Mood = "gut" | "okay" | "mau" | "schlecht";
-  const MOODS = [
-    { key: "gut", emoji: "😊", label: "Gut" }, { key: "okay", emoji: "🙂", label: "Okay" },
-    { key: "mau", emoji: "😕", label: "Mau" }, { key: "schlecht", emoji: "😣", label: "Schlecht" },
-  ] as const;
+  const MOODS: Record<string, [string, string]> = { gut: ["😊", "Gut"], okay: ["🙂", "Okay"], mau: ["😕", "Mau"], schlecht: ["😣", "Schlecht"] };
 
   const view = loader(async () => {
-    const [flares, tf, en] = await Promise.all([loadFlares(), q("SELECT energie, gefuehl FROM tagesform WHERE tag = ?", [today()]), energySeries(14)]);
-    return { flares, saved: tf[0] as { energie: number; gefuehl: Mood | null } | undefined, en };
+    const [flares, tf, en, days] = await Promise.all([
+      loadFlares(), q("SELECT energie, gefuehl FROM tagesform WHERE tag = ?", [today()]), energySeries(14),
+      q("SELECT tag, staerke FROM verlauf WHERE schub IN (SELECT id FROM schuebe WHERE ende IS NULL) ORDER BY tag DESC LIMIT 2"),
+    ]);
+    return { flares, saved: tf[0] as { energie: number; gefuehl: string | null } | undefined, en, days: days as { tag: string; staerke: number }[] };
   });
   const data = $derived(view.data);
   const running = $derived(data?.flares.find((f) => !f.ende));
   const ended = $derived(data?.flares.filter((f) => f.ende).sort((a, b) => (a.ende! < b.ende! ? 1 : -1))[0]);
   const free = $derived(ended ? diff(ended.ende!, today()) : 0);
-
-  // today's entry; the form starts from what is saved, and stays what the person is typing after that
-  let mood = $state<Mood | null>(null), energy = $state(5), touched = $state(false);
-  $effect(() => {
-    if (data && !touched) { mood = data.saved?.gefuehl ?? null; energy = data.saved?.energie ?? 5; }
-  });
-  const moodLabel = (m: Mood | null) => MOODS.find((x) => x.key === m)?.label;
-  const savedLine = $derived(data?.saved ? `Heute gespeichert ✓ Energie ${data.saved.energie}/10${data.saved.gefuehl ? ", " + moodLabel(data.saved.gefuehl) : ""}` : "Noch nicht eingetragen.");
-
-  async function save() {
-    try {
-      await exec("INSERT INTO tagesform (tag, energie, gefuehl) VALUES (?, ?, ?) ON CONFLICT(tag) DO UPDATE SET energie = excluded.energie, gefuehl = excluded.gefuehl", [today(), energy, mood]);
-      buzz("success"); reloadWidget(); touched = false; toast("Gespeichert 💗"); app.tick++;
-    } catch (e) { quiet(e); }
-  }
-
-  $effect(() => { if (app.focus === "mood" && data) { app.focus = null; void reveal("mood-group"); } });
+  // running flare: is today written, and how does it compare with the day before
+  const logged = $derived(data?.days[0]?.tag === today());
+  const mood = $derived(data?.saved?.gefuehl ? MOODS[data.saved.gefuehl] : null);
 </script>
 
 <div class="content">
@@ -52,38 +37,46 @@
   {#if data}
     <section class="card status" aria-label="Status">
       {#if running}
-        {@const last = running.letzte ?? running.staerke}
         <h2><span class="dot" aria-hidden="true"></span>Schub · Tag {flareLen(running)}</h2>
-        <p class="s">Stärke zuletzt {last}/10 · seit {deShort(running.start)}</p>
-        <div class="btns">
-          <button type="button" class="btn" onclick={() => push({ name: "flare", id: running.id }, "today")}>Noch da</button>
-          <button type="button" class="btn tint" onclick={() => push({ name: "flare", id: running.id }, "end")}>Vorbei</button>
-        </div>
-      {:else if !data.flares.length}
-        <p class="big">Noch kein Schub</p>
-        <p class="s">Das ist völlig in Ordnung. Wenn doch einer kommt, kannst du ihn hier festhalten.</p>
-        <button type="button" class="btn block" onclick={openNew}>Schub eintragen</button>
-      {:else if free <= 0}
-        <p class="big">Schub vorbei</p>
-        <p class="s">Der letzte Schub endete heute. Gut gemacht.</p>
-        <button type="button" class="btn block" onclick={openNew}>Schub eintragen</button>
+        {#if logged}
+          <p class="s">{["Heute: Stärke " + data.days[0].staerke + "/10 ✓", trendText(data.days[0].staerke, data.days[1])].filter(Boolean).join(" · ")}</p>
+          <div class="btns">
+            <button type="button" class="btn" onclick={() => startDay("staerke")}>Ändern</button>
+            <button type="button" class="btn tint" onclick={startEnd}>Vorbei</button>
+          </div>
+        {:else}
+          <p class="s">Stärke zuletzt {data.days[0]?.staerke ?? running.letzte ?? running.staerke}/10 · seit {deShort(running.start)}</p>
+          <div class="btns">
+            <button type="button" class="btn" onclick={() => startDay("noch-da")}>Ja, noch da</button>
+            <button type="button" class="btn tint" onclick={startEnd}>Vorbei</button>
+          </div>
+        {/if}
       {:else}
-        <p class="big">{free} {free === 1 ? "Tag" : "Tage"}</p>
-        <p class="s">ohne Schub · letzter Schub endete am {de(ended!.ende!)}</p>
-        <button type="button" class="btn block" onclick={openNew}>Schub eintragen</button>
+        {#if !data.flares.length}
+          <p class="big">Noch kein Schub</p>
+          <p class="s">Das ist völlig in Ordnung. Wenn doch einer kommt, kannst du ihn hier festhalten.</p>
+        {:else if free <= 0}
+          <p class="big">Schub vorbei</p>
+          <p class="s">Der letzte Schub endete heute. Gut gemacht.</p>
+        {:else}
+          <p class="big">{free} {free === 1 ? "Tag" : "Tage"}</p>
+          <p class="s">ohne Schub · letzter Schub endete am {de(ended!.ende!)}</p>
+        {/if}
+        {#if mood}<p class="s" style="margin-top:.5rem">{`Heute: ${mood[0]} ${mood[1]} · Energie ${data.saved!.energie}/10 ✓`}</p>{/if}
+        {#if mood}
+          <button type="button" class="btn tint block" onclick={startNew}>Neuer Schub</button>
+        {:else}
+          <div class="btns wide">
+            <button type="button" class="btn" onclick={startMood}>Wie geht’s dir?</button>
+            <button type="button" class="btn tint" onclick={startNew}>Neuer Schub</button>
+          </div>
+        {/if}
       {/if}
     </section>
 
     <section class="group" id="mood-group">
       <h2 class="gh">Wie geht’s dir?</h2>
-      <div class="gl">
-        <div class="row" style="padding-block:.75rem">
-          <Segmented items={MOODS.map((m) => ({ ...m }))} bind:value={mood} label="Stimmung" mood onpick={() => { touched = true; }} />
-        </div>
-        <SliderRow id="energie" label="Energie" bind:value={energy} oninput={() => { touched = true; }} />
-        <button type="button" class="row action" onclick={save}>Speichern</button>
-      </div>
-      <p class="gf" role="status">{savedLine}</p>
+      <MoodEditor />
     </section>
 
     <section class="group">

@@ -9,6 +9,9 @@
   import AllFlares from "./screens/AllFlares.svelte";
   import NewFlare from "./screens/NewFlare.svelte";
   import Settings from "./screens/Settings.svelte";
+  import DaySheet from "./screens/DaySheet.svelte";
+  import EndSheet from "./screens/EndSheet.svelte";
+  import MoodSheet from "./screens/MoodSheet.svelte";
   import Lock from "./screens/Lock.svelte";
   import { app, motion, start } from "./lib/store.svelte";
 
@@ -35,6 +38,9 @@
 
   {#if app.sheet === "new"}<NewFlare />{/if}
   {#if app.sheet === "settings"}<Settings />{/if}
+  {#if app.sheet === "day" && app.day}{#key app.day}<DaySheet />{/key}{/if}
+  {#if app.sheet === "end"}<EndSheet />{/if}
+  {#if app.sheet === "mood"}<MoodSheet />{/if}
   {#if app.locked}<Lock />{/if}
 
   {#key app.fx}
@@ -44,5 +50,7 @@
       </div>
     {/if}
   {/key}
-  {#if app.toast}<p class="toast" class:high={app.stack.length > 0} role="status" transition:fade={{ duration: motion(150) }}>{app.toast}</p>{/if}
+  {#if app.toast}
+    <p class="toast" class:high={app.stack.length > 0} class:top={app.sheet !== null} role="status" transition:fade={{ duration: motion(150) }}>{app.toast}{#if app.toastAction}<button type="button" class="tbtn" onclick={() => { const a = app.toastAction; app.toast = ""; app.toastAction = null; a?.run(); }}>{app.toastAction.label}</button>{/if}</p>
+  {/if}
 {/if}

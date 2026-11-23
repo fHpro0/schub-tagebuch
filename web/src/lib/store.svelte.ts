@@ -1,19 +1,20 @@
 // App state: tabs, the stack of pushed screens, sheets, the lock and the intents from widget buttons and actions.
 import { tick } from "svelte";
 import { authCheck, buzz, on, q, ready, type PhoneError } from "./phone";
+import { todayState, type DayState } from "./flow";
 
 export type Tab = "heute" | "verlauf" | "arzt";
 export type Route = { name: "flare"; id: string } | { name: "all" };
-export type Focus = "mood" | "today" | "end" | null;
-type Intent = "noch-da" | "vorbei" | "neu" | "tagesform";
+export type Sheet = null | "new" | "settings" | "day" | "end" | "mood";
 
 export const app = $state({
   tab: "heute" as Tab,
   stack: [] as Route[],
-  sheet: null as null | "new" | "settings",
+  sheet: null as Sheet,
+  day: null as null | (DayState & { kind: "noch-da" | "staerke" }), // what the "noch da" / "Stärke heute" sheet shows
   tick: 0, // bumps whenever the data may have changed; screens reload on it
-  focus: null as Focus,
   toast: "",
+  toastAction: null as null | { label: string; run: () => void },
   fx: 0, // bumps for a little confetti
   locked: false,
   lockText: "Mit Face ID öffnest du dein Tagebuch.",
@@ -25,28 +26,46 @@ export const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)"
 export const motion = (ms: number) => (reducedMotion() ? 0 : ms);
 
 let toastTimer = 0;
-export function toast(text: string) {
-  app.toast = text;
+export function toast(text: string, action: { label: string; run: () => void } | null = null) {
+  app.toast = text; app.toastAction = action;
   clearTimeout(toastTimer);
-  if (text) toastTimer = window.setTimeout(() => { app.toast = ""; }, 4000);
+  if (text) toastTimer = window.setTimeout(() => { app.toast = ""; app.toastAction = null; }, action ? 7000 : 4000);
 }
 export const quiet = (e: unknown) => { const err = e as PhoneError | undefined; if (err && err.code !== "Cancelled") toast(err.message || "Das hat nicht geklappt."); };
 export const refresh = () => { app.tick++; };
 export const confetti = () => { if (!reducedMotion()) app.fx++; };
 
-export const push = (route: Route, focus: Focus = null) => { app.focus = focus; app.stack.push(route); };
+export const push = (route: Route) => { app.stack.push(route); };
 export const pop = () => { app.stack.pop(); toast(""); };
 export const openNew = () => { app.sheet = "new"; };
 export const setTab = (t: Tab) => { app.tab = t; };
 
-/** Scroll an element into the middle of the screen and focus its first control (used by widget buttons and actions). */
-export async function reveal(id: string) {
-  await tick();
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
-  el.querySelector<HTMLElement>("input, button")?.focus({ preventScroll: true });
+// ---- the sheets: the same ones for the widget buttons, the actions and the buttons in the app
+/** Back to a clean Heute: nothing pushed, no sheet. */
+export function closeAll() { app.sheet = null; app.day = null; app.stack = []; app.tab = "heute"; }
+/** "noch da" (writes today's row first) or "staerke" (just shows it). Safe to call twice: a second call changes nothing
+ *  (the row is written with ON CONFLICT DO NOTHING). Calls run one after the other (see `intents`), so a later tap is
+ *  never dropped because an earlier one was still busy. */
+export async function startDay(kind: "noch-da" | "staerke") {
+  if (app.sheet === "day" && app.day?.kind === kind) return;
+  try {
+    const st = await todayState(kind === "noch-da");
+    closeAll();
+    if (!st) { toast("Gerade läuft kein Schub.", { label: "Neuer Schub", run: openNew }); return; }
+    app.day = { ...st, kind }; app.sheet = "day"; refresh();
+  } catch (e) { quiet(e); }
 }
+export async function startEnd() {
+  if (app.sheet === "end") return;
+  try {
+    const run = await q("SELECT id FROM schuebe WHERE ende IS NULL LIMIT 1");
+    closeAll();
+    if (!run.length) { toast("Gerade läuft kein Schub.", { label: "Neuer Schub", run: openNew }); return; }
+    app.sheet = "end";
+  } catch (e) { quiet(e); }
+}
+export function startMood() { if (app.sheet === "mood") return; closeAll(); app.sheet = "mood"; }
+export function startNew() { if (app.sheet === "new") return; closeAll(); app.sheet = "new"; }
 
 // ---- Face ID lock
 export function setLockOn(v: boolean) {
@@ -84,21 +103,25 @@ export async function unlock() {
 }
 
 // ---- widget buttons and phone actions: phone.on("notification", {page}) and phone.on("action", {id})
+// An event can come before the data is there, or while Face ID has the app locked: it waits for both.
+type Intent = "noch-da" | "staerke" | "vorbei" | "neu" | "tagesform" | "heute";
 let intent: Intent | null = null;
-const INTENTS: Record<string, Intent> = { "noch-da": "noch-da", vorbei: "vorbei", neu: "neu", tagesform: "tagesform", "neuer-schub": "neu" };
+// one at a time, in order: two taps close together (an old place and a new tap at start-up) both run, the last one wins
+let intents: Promise<void> = Promise.resolve();
+const INTENTS: Record<string, Intent> = { "noch-da": "noch-da", staerke: "staerke", vorbei: "vorbei", neu: "neu", tagesform: "tagesform", heute: "heute", "neuer-schub": "neu" };
 function takeIntent(kind: Intent) { intent = kind; if (app.started && !app.locked) void runIntent(); }
-async function runIntent() {
+function runIntent(): Promise<void> {
+  intents = intents.then(runOne, runOne);
+  return intents;
+}
+async function runOne() {
   const k = intent; intent = null;
   if (!k) return;
-  try {
-    if (k === "neu") { openNew(); return; }
-    if (k === "tagesform") { app.stack = []; app.tab = "heute"; app.focus = "mood"; return; }
-    const run = await q("SELECT id FROM schuebe WHERE ende IS NULL ORDER BY start DESC LIMIT 1");
-    if (!run.length) { toast("Gerade läuft kein Schub."); app.stack = []; app.tab = "heute"; return; }
-    app.sheet = null;
-    app.stack = [{ name: "flare", id: run[0].id }];
-    app.focus = k === "noch-da" ? "today" : "end";
-  } catch (e) { quiet(e); }
+  if (k === "noch-da" || k === "staerke") await startDay(k);
+  else if (k === "vorbei") await startEnd();
+  else if (k === "tagesform") startMood();
+  else if (k === "neu") startNew();
+  else closeAll();
 }
 
 export function start() {
